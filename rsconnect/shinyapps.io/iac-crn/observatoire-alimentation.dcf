@@ -1,0 +1,12 @@
+name: observatoire-alimentation
+title: observatoire-alimentation
+username: iac-crn
+account: iac-crn
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14596879
+bundleId: 10167428
+url: https://iac-crn.shinyapps.io/observatoire-alimentation/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

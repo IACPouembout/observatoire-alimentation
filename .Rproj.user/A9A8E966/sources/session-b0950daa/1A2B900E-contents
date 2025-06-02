@@ -1,0 +1,232 @@
+pacman::p_load("here",sf,leaflet.minicharts,leaflet,janitor)
+source(here("import_agri_tribu.R"),encoding = "utf8")
+
+regions <- read_sf(here("agri_tribu_2010","regions.shp"))%>%
+  st_simplify()%>%
+  st_simplify()%>%
+  filter(is.na(N_region)==F)
+
+write_sf(regions,here("regions.shp"))
+
+pop_total <- read_rds(here("pop_total.rds"))
+
+
+DD1_Prod_Veget <- read_excel("C:/Users/Utilisateur/OneDrive - IAC - INSITUT AGRONOMIQUE NEO CALEDONIEN/BDD/PACIFIC_DATAVIZ_CHALLENGE_2023/agri_tribu_2010/AGRI_2010_BDD_ALL.xlsx",sheet ="DD1_Prod_Veget")
+M44_productions_végétales_MAJ <- read_excel("C:/Users/Utilisateur/OneDrive - IAC - INSITUT AGRONOMIQUE NEO CALEDONIEN/BDD/PACIFIC_DATAVIZ_CHALLENGE_2023/agri_tribu_2010/AGRI_2010_DICO.xlsx",sheet ="M44_productions_végétales_MAJ")
+R03_coef_extrap_GD <- read_excel("C:/Users/Utilisateur/OneDrive - IAC - INSITUT AGRONOMIQUE NEO CALEDONIEN/BDD/PACIFIC_DATAVIZ_CHALLENGE_2023/agri_tribu_2010/AGRI_2010_DICO.xlsx",sheet ="R03_coef_extrap_GD")
+R03_coef_extrap_GD$N_region<- R03_coef_extrap_GD$Zone2 %>%
+  fct_recode(
+    "Nord Ouest" = "11_Espaces de l'Ouest",
+    "Grand Nord" = "12_Grand Nord",
+    "Nord Est" = "13_Côte Océanienne",
+    "Nord Minier" = "14_Sud Minier",
+    "Sud Ouest" = "21_Sud Ouest",
+    "Grand Nouméa" = "22_Grand Nouméa",
+    "Sud Est" = "23_Sud Est",
+    "Ouvéa" = "31_Ouvéa",
+    "Lifou" = "32_Lifou",
+    "Maré" = "33_Maré"
+  )
+
+repartition_agri_tribu_total_region <-  DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget`  %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),
+         Coef_extrap_GD = as.numeric(Coef_extrap_GD),
+         `N_productions vegetales`=`N_group_prod veget`
+  )%>%
+  mutate(`N_group_prod veget` ="Productions végétales totales")%>%
+  select(Province,N_region,FK_DA1_Menage,`N_group_prod veget`,`N_productions vegetales`,Coef_extrap_GD)%>%
+  unique()
+
+repartition_agri_tribu_region <-  DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget`  %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),
+         Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  select(Province,N_region,FK_DA1_Menage,`N_group_prod veget`,`N_productions vegetales`,Coef_extrap_GD)%>%
+  unique()
+
+repartition_agri_tribu_region <-bind_rows(repartition_agri_tribu_total_region,repartition_agri_tribu_region)
+write_csv(repartition_agri_tribu_region,here("repartition_agri_tribu_region.csv"))
+
+
+prod_agri_tribu_total_region <- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget`  %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),
+         Coef_extrap_GD = as.numeric(Coef_extrap_GD),
+         `N_productions vegetales`=`N_group_prod veget`
+         )%>%
+  pivot_longer(starts_with("part_"),names_to = "destination",values_to = "part")%>%
+  group_by(Province,N_region,FK_DA1_Menage,`N_productions vegetales`,Coef_extrap_GD,destination,part)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  group_by(Province,N_region,`N_productions vegetales`,destination)%>%
+  summarise(production_kg=round(sum(production_kg *Coef_extrap_GD*(part/100),na.rm = T)/1000))%>%
+  mutate(destination=str_to_sentence(str_remove(destination,"part_|\\_")))%>%
+  pivot_wider(names_from="destination",values_from="production_kg")%>%
+  adorn_totals("col")%>%
+  mutate(`N_group_prod veget` ="Productions végétales totales")
+
+prod_agri_tribu_region <- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget` %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),
+         Coef_extrap_GD = as.numeric(Coef_extrap_GD),
+         `N_productions vegetales`= str_to_sentence(`N_productions vegetales`)
+         )%>%
+  pivot_longer(starts_with("part_"),names_to = "destination",values_to = "part")%>%
+  group_by(Province,N_region,FK_DA1_Menage,`N_group_prod veget`,`N_productions vegetales`,Coef_extrap_GD,destination,part)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  group_by(Province,N_region,`N_group_prod veget`,`N_productions vegetales`,destination)%>%
+  summarise(production_kg=round(sum(production_kg *Coef_extrap_GD*(part/100),na.rm = T)/1000))%>%
+  mutate(destination=str_to_sentence(str_remove(destination,"part_|\\_")))%>%
+  pivot_wider(names_from="destination",values_from="production_kg")%>%
+  adorn_totals("col")
+
+
+
+
+prod_agri_tribu_region <- prod_agri_tribu_region%>%
+  bind_rows(prod_agri_tribu_total_region)
+
+
+write_csv(prod_agri_tribu_region,here("prod_agri_tribu_region.csv"))
+
+
+prod_agri_tribu_total<- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget`  %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  pivot_longer(starts_with("part_"),names_to = "destination",values_to = "part")%>%
+  group_by(Province,N_region,FK_DA1_Menage,Coef_extrap_GD,destination,part)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  group_by(Province,N_region,destination)%>%
+  summarise(production_kg=round(sum(production_kg *Coef_extrap_GD*(part/100),na.rm = T)/1000))%>%
+  mutate(destination=str_to_sentence(str_remove(destination,"part_|\\_")))%>%
+  mutate(`N_group_prod veget` ="Productions végétales totales")
+
+prod_agri_tribu<- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  
+  filter(!`N_group_prod veget` %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  pivot_longer(starts_with("part_"),names_to = "destination",values_to = "part")%>%
+  group_by(FK_DA1_Menage,`N_group_prod veget`,`N_productions vegetales`, Coef_extrap_GD,destination,part)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  group_by(`N_group_prod veget`,`N_productions vegetales`, destination)%>%
+  summarise(production_kg=round(sum(production_kg *Coef_extrap_GD*(part/100),na.rm = T)/1000))
+
+
+
+
+
+
+
+
+
+
+
+
+carte_regions_total <-regions%>%left_join( 
+  prod_agri_tribu_total_region)
+
+colors <- RColorBrewer::brewer.pal(name = "Set2",6)
+colors <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F")
+leaflet(data = carte_regions_total)%>%
+  addTiles()%>%
+  addPolygons(data=carte_regions_total,weight = 1)%>%
+  addMinicharts(carte_regions_total$Long,carte_regions_total$Lat,type = "pie",
+                chartdata = as_tibble(carte_regions_total)[6:11],
+                colorPalette = colors
+                )
+
+
+
+leaflet(data = carte_regions_total)%>%
+  addTiles()%>%
+  addPolygons(data=carte_regions_total,weight = 1)%>%
+  addMinicharts(carte_regions_total$Long,carte_regions_total$Lat,
+                chartdata = as_tibble(carte_regions_total$Total),showLabels = T
+  )
+
+
+
+
+
+
+
+  
+prod_agri_tribu_total<- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  group_by(FK_DA1_Menage,Coef_extrap_GD)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  mutate(N_group_prod.veget="Productions végétales totales")%>%
+  summarise(production_kg=sum(production_kg *Coef_extrap_GD))
+
+prod_agri_tribu<- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  group_by(FK_DA1_Menage,N_productions.vegetales,Coef_extrap_GD)%>%
+  summarise(production_kg=sum(production_kg,na.rm = T))%>%
+  group_by(N_productions.vegetales)%>%
+  summarise(production_kg=sum(production_kg *Coef_extrap_GD))
+
+repartition_agri_region <- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+   select(N_productions.vegetales,N_region,FK_DA1_Menage,Coef_extrap_GD)%>%
+  unique()%>%
+   group_by(N_productions.vegetales,N_region)%>%
+    summarise(pop=sum(as.numeric(Coef_extrap_GD)))%>%
+    left_join(pop_total)%>%
+    mutate(percent=pop/menages_region)
+
+repartition_agri <- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  select(N_productions.vegetales,FK_DA1_Menage,Coef_extrap_GD)%>%
+  unique()%>%
+  group_by(N_productions.vegetales)%>%
+  summarise(pop=sum(as.numeric(Coef_extrap_GD)))%>%
+  mutate(percent=pop/sum(pop_total$menages_region))
+
+
+
+repartition_prod_agri_province <- DD1_Prod_Veget %>%
+  left_join(M44_productions_végétales_MAJ)%>%
+  left_join(R03_coef_extrap_GD,by=c("FK_DA1_Menage"="PK_DA1_Menage"))%>%  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))%>%
+  mutate(production_kg=as.numeric(production_kg),Coef_extrap_GD = as.numeric(Coef_extrap_GD))%>%
+  select(N_productions.vegetales,N_region,FK_DA1_Menage,Coef_extrap_GD)%>%
+  unique()%>%
+  group_by(N_productions.vegetales,N_region)%>%
+  summarise(pop=sum(as.numeric(Coef_extrap_GD)))%>%
+  left_join(pop_total)%>%
+  mutate(percent=pop/menages_region)
+
+
+
+
+
+prod_agri <- rbind(prod_agri,prod_agri_2)%>%
+  filter(!N_group_prod.veget %in% c("Cannabis","Céréales et fourrages"))
+
+
+
+prod_agri$N_group_prod.veget <- fct_reorder(prod_agri$N_group_prod.veget,prod_agri$production_kg,.desc = T)
+
+
+write_rds(x = prod_agri%>%ungroup(),here("data","agri_tribu_2010","prod_agri.rds"))
+
+
+fruits_legumes_tribu
